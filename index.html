@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prueba Bluetooth CPCL - Honeywell</title>
+<style>
+:root{font-family:system-ui,Arial,sans-serif;color:#14213d;background:#f4f7fb}body{margin:0;padding:18px}main{max-width:520px;margin:auto;background:white;padding:22px;border-radius:16px;box-shadow:0 3px 16px #0001}h1{font-size:23px;margin:0 0 8px}p{line-height:1.5;color:#4a5568}label{display:block;font-weight:650;margin:14px 0 6px}input{font:inherit;box-sizing:border-box;width:100%;padding:13px;border:1px solid #aab5c4;border-radius:8px}button{font:inherit;width:100%;padding:14px;margin-top:12px;border:0;border-radius:9px;background:#1459b5;color:white;font-weight:700}button.secondary{background:#334155}button:disabled{opacity:.5}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#edf2f8;padding:12px;border-radius:8px;color:#19324a;font-size:12px}#status{font-weight:bold}small{color:#64748b}
+</style>
+</head>
+<body><main>
+<h1>Prueba de impresión CPCL</h1>
+<p>Honeywell CK65/CK67 → Chrome → LK_P400_BT. No se conecta a SAP ni envía datos a internet.</p>
+<p id="status">Verificando compatibilidad…</p>
+<button id="connect">Conectar impresora Bluetooth</button>
+<label for="material">Material</label><input id="material" value="100147" maxlength="24">
+<label for="descripcion">Descripción</label><input id="descripcion" value="QUESO COTTAGE 380 G" maxlength="55">
+<label for="cantidad">Cantidad</label><input id="cantidad" value="5 PZA" maxlength="20">
+<button id="print" disabled>Imprimir etiqueta de prueba</button>
+<button id="disconnect" class="secondary" disabled>Desconectar</button>
+<label>CPCL que se enviará</label><pre id="preview"></pre>
+<small>Requiere Chrome compatible y una página publicada en HTTPS (o localhost). El selector Bluetooth necesita un toque del usuario. Si no aparece la impresora, revisaremos la compatibilidad RFCOMM/SPP.</small>
+</main>
+<script>
+let port = null;
+const $ = s => document.querySelector(s);
+const status = s => { $('#status').textContent=s; };
+function safe(s){return String(s).replace(/[^A-Za-z0-9 ÁÉÍÓÚÜÑáéíóúüñ.,:()\/-]/g,' ').replace(/\s+/g,' ').trim();}
+function cpcl(){
+ const material=safe($('#material').value), descripcion=safe($('#descripcion').value), cantidad=safe($('#cantidad').value);
+ return `! 0 200 200 320 1\r\nTEXT 0 0 20 20 SUPER KOMPRAS\r\nTEXT 0 0 20 60 PRUEBA BLUETOOTH\r\nTEXT 0 0 20 100 MATERIAL: ${material}\r\nTEXT 0 0 20 140 ${descripcion}\r\nTEXT 0 0 20 180 CANTIDAD: ${cantidad}\r\nFORM\r\nPRINT\r\n`;
+}
+function refresh(){ $('#preview').textContent=cpcl(); }
+for (const id of ['material','descripcion','cantidad']) $('#'+id).addEventListener('input',refresh); refresh();
+if (!window.isSecureContext) { status('Necesitas abrir esta página desde HTTPS.'); $('#connect').disabled=true; }
+else if (!('serial' in navigator)) {status('Este Chrome no ofrece Web Serial. Revisaremos una alternativa Android.');$('#connect').disabled=true;}
+else status('Web Serial disponible. Toca Conectar.');
+$('#connect').addEventListener('click',async()=>{
+ try{
+  status('Elige LK_P400_BT en el selector…');
+  port=await navigator.serial.requestPort({allowedBluetoothServiceClassIds:['00001101-0000-1000-8000-00805f9b34fb']});
+  await port.open({baudRate:9600});
+  status('Impresora conectada. Lista para probar.');
+  $('#print').disabled=false;$('#disconnect').disabled=false;$('#connect').disabled=true;
+ }catch(e){port=null;status('No se pudo conectar: '+(e.message||String(e)));}
+});
+$('#print').addEventListener('click',async()=>{
+ if(!port) return;
+ $('#print').disabled=true;
+ let writer;
+ try{
+  writer=port.writable.getWriter();
+  await writer.write(new TextEncoder().encode(cpcl()));
+  status('Comandos enviados. Comprueba si salió la etiqueta.');
+ }catch(e){ status('Error de envío: '+(e.message||String(e))); }
+ finally{if(writer)writer.releaseLock();$('#print').disabled=false;}
+});
+$('#disconnect').addEventListener('click',async()=>{
+ try{if(port)await port.close();status('Desconectada.');}
+ catch(e){status('Error al desconectar: '+(e.message||String(e)));}
+ finally{port=null;$('#print').disabled=true;$('#disconnect').disabled=true;$('#connect').disabled=false;}
+});
+</script>
+</body></html>
